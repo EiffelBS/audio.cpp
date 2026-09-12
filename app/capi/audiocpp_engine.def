@@ -1,0 +1,12 @@
+LIBRARY audiocpp_engine
+EXPORTS
+    acpp_init
+    acpp_shutdown
+    acpp_model_load
+    acpp_model_unload
+    acpp_run_json
+    acpp_run_json_progress
+    acpp_run_json_stems
+    acpp_last_text
+    acpp_last_artifact
+    acpp_last_error

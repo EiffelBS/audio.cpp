@@ -2083,6 +2083,10 @@ if (ENGINE_ENABLE_CUDA AND NOT ENGINE_ENABLE_HIP)
     target_link_libraries(engine_runtime PRIVATE CUDA::cudart CUDA::cufft)
 endif()
 
+# In-process shared C API (EiffelBS fork): the audiocpp_engine DLL target
+# rides the same engine_runtime build as the CLI/server.
+add_subdirectory(app/capi)
+
 add_executable(audiocpp_cli
     app/common/build_info.cpp
     app/cli/main.cpp
