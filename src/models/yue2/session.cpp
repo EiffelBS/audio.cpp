@@ -230,8 +230,14 @@ runtime::TaskResult Yue2Session::run(const runtime::TaskRequest & request) {
     require_prepared("Yue2 run");
     const auto wall_start = Clock::now();
     const auto parsed = parse_yue2_request(request, assets_->config.generation);
+    const auto out = pipeline_->run(parsed);
     runtime::TaskResult result;
-    result.audio_output = pipeline_->run(parsed);
+    result.audio_output = std::move(out.audio);
+    if (!out.abc.empty()) {
+        // Surface the planned score (explicit, or decoded back from the
+        // model-generated ABC tokens) so hosts can edit/re-render it.
+        result.text_output = runtime::Transcript{out.abc, "abc"};
+    }
     engine::debug::timing_log_scalar("session.wall_ms", engine::debug::elapsed_ms(wall_start, Clock::now()));
     return result;
 }

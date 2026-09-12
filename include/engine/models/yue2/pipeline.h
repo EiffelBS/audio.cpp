@@ -9,9 +9,20 @@
 #include "engine/models/yue2/tokenizer_text.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace engine::models::yue2 {
+
+/** Result of a full pipeline run: the decoded audio plus the ABC score
+    that was planned and rendered from. When the score was provided
+    explicitly in the request, `abc` carries that original text; when
+    the model planned it (cot != off with no abc), it carries the
+    decoded generated score so hosts can surface/edit it. */
+struct Yue2RunResult {
+    runtime::AudioBuffer audio;
+    std::string abc;
+};
 
 class Yue2PipelineRuntime {
 public:
@@ -35,7 +46,7 @@ public:
         const Yue2GenerationConfig & generation,
         uint64_t seed);
     runtime::AudioBuffer decode_audio(const std::vector<float> & latents, int64_t frames);
-    runtime::AudioBuffer run(const Yue2Request & request);
+    Yue2RunResult run(const Yue2Request & request);
     void release_runtime_graphs();
 
 private:

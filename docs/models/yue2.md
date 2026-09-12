@@ -1,4 +1,4 @@
-# YuE2
+﻿# YuE2
 
 YuE2 is wired as `--family yue2 --task gen`. It generates music from lyrics and
 a style prompt, with optional symbolic ABC conditioning.
@@ -148,3 +148,16 @@ Inline ABC can be passed with `--request-option abc=<abc text>`.
 | `--session-option yue2.ar_decode_graph_arena_mb=<n>` | MiB integer >= 1 | `1536` | AR one-token decode graph arena size. |
 | `--session-option yue2.nar_graph_arena_mb=<n>` | MiB integer >= 1 | `6144` | NAR acoustic flow graph arena size. |
 | `--session-option yue2.vae_graph_arena_mb=<n>` | MiB integer >= 1 | `1536` | VAE decode graph arena size. |
+
+## Planned-score output (text_output)
+
+On the symbolic routes (`cot=melody` / `cot=full`), the session surfaces
+the score that was used for the render through `result.text_output`
+(language tag `abc`), so in-process hosts can read back the plan:
+
+- an explicit `abc` / `abc_file` is echoed verbatim;
+- otherwise the model-planned ABC tokens are decoded back to text.
+
+This closes the "generated score is lost" gap: CLI callers can show or
+re-inject the auto-planned score, and hosts can persist it for
+edit-and-re-render workflows.

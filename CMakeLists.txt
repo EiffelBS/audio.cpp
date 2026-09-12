@@ -1425,6 +1425,7 @@ audiocpp_add_model(yue2
         src/models/yue2/pipeline.cpp
         src/models/yue2/request.cpp
         src/models/yue2/session.cpp
+        src/models/yue2/tokenizer_decode.cpp
         src/models/yue2/tokenizer_text.cpp
         src/models/yue2/types.cpp
     INCLUDES
