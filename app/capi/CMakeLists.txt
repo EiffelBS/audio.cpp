@@ -12,15 +12,24 @@
 
 add_library(audiocpp_engine SHARED
     audiocpp_capi.cpp
+    ../../src/capi/audiocpp.cpp
     ../cli/request.cpp
     ../cli/args.cpp
 )
 
-target_compile_definitions(audiocpp_engine PRIVATE AUDIOCPP_ENGINE_EXPORTS)
+# AUDIOCPP_ENGINE_EXPORTS gives the acpp_* facade its dllexport; AUDIOCPP_BUILD_DLL
+# does the same for the upstream audiocpp_* facade (include/audiocpp.h, #530).
+# On MSVC .def and dllexport are additive: the .def below keeps the 10 acpp_* and
+# dllexport brings the 69 audiocpp_* (cJSON no longer leaks via CJSON_HIDE_SYMBOLS).
+target_compile_definitions(audiocpp_engine PRIVATE
+    AUDIOCPP_ENGINE_EXPORTS
+    AUDIOCPP_BUILD_DLL
+    AUDIOCPP_VERSION_STRING="${AUDIOCPP_VERSION}")
 target_compile_features(audiocpp_engine PRIVATE cxx_std_20)
 
 target_include_directories(audiocpp_engine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../..
 )
 
 target_link_libraries(audiocpp_engine PRIVATE engine_runtime)
@@ -29,8 +38,9 @@ if (MSVC)
     target_compile_options(audiocpp_engine PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/utf-8>)
 endif()
 
-# Only the C API leaves the module (the .def file wins over dllexport
-# guesses; everything else stays internal even if it ends up in the object).
+# Export surface: the .def keeps the 10 acpp_* entry points, dllexport
+# annotations in the objects add the 69 audiocpp_* (MSVC unions both lists;
+# cJSON is silenced via CJSON_HIDE_SYMBOLS so only these 79 leave the module).
 target_sources(audiocpp_engine PRIVATE audiocpp_engine.def)
 
 set_target_properties(audiocpp_engine PROPERTIES
