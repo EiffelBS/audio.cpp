@@ -25,12 +25,17 @@ public:
     void prepare(const runtime::SessionPreparationRequest & request) override;
     runtime::TaskResult run(const runtime::TaskRequest & request) override;
 
+    /** Per-run progress sink (phase/done/total, worker thread). Null by
+        default; set before run(), cleared by the caller afterwards. */
+    void set_progress_sink(ProgressSink sink) { progress_sink_ = std::move(sink); }
+
 private:
     MiniMaxMusic3Request parse_request(const runtime::TaskRequest & request) const;
 
     runtime::TaskSpec task_;
     std::shared_ptr<const MiniMaxMusic3Assets> assets_;
     std::unique_ptr<MiniMaxMusic3PipelineRuntime> pipeline_;
+    ProgressSink progress_sink_;
 };
 
 std::shared_ptr<runtime::IVoiceModelLoader> make_minimax_music3_loader();

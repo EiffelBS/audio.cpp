@@ -147,7 +147,8 @@ struct MiniMaxMusic3PipelineRuntime::Impl {
         return overlap_execution != nullptr ? *overlap_execution : execution;
     }
 
-    runtime::AudioBuffer generate(const MiniMaxMusic3Request & request) {
+    runtime::AudioBuffer generate(const MiniMaxMusic3Request & request,
+                                    ProgressSink progress) {
         if (request.duration_sec <= 0.0) {
             throw std::runtime_error("MiniMax Music 3 duration_sec must be positive");
         }
@@ -170,12 +171,12 @@ struct MiniMaxMusic3PipelineRuntime::Impl {
         constexpr int64_t kOverlapMaxFrames = 600;
         if (pipeline_overlap && target_frames <= kOverlapMaxFrames &&
             request.flow_chunk_hop_frames <= 0) {
-            return generate_overlapped(request, target_frames);
+            return generate_overlapped(request, target_frames, progress);
         }
         if (pipeline_overlap) {
             engine::debug::timing_log_scalar("minimax_music3.pipeline.overlap_skipped_long", 1.0);
         }
-        return generate_sequential(request, target_frames);
+        return generate_sequential(request, target_frames, progress);
     }
 
     std::vector<runtime::AudioBuffer> generate_ensemble(
@@ -237,12 +238,14 @@ struct MiniMaxMusic3PipelineRuntime::Impl {
     }
 
     // The exact pre-existing sequential pipeline, byte-for-byte.
-    runtime::AudioBuffer generate_sequential(const MiniMaxMusic3Request & request, int64_t target_frames) {
+    runtime::AudioBuffer generate_sequential(const MiniMaxMusic3Request & request, int64_t target_frames,
+                                             ProgressSink progress) {
         uint64_t rng_offset_blocks = 0;
         std::vector<float> frame_hiddens;
         {
             auto & ar_runtime = ensure_ar();
-            frame_hiddens = ar_runtime.generate_frame_hiddens(request, target_frames, rng_offset_blocks);
+            frame_hiddens = ar_runtime.generate_frame_hiddens(request, target_frames, rng_offset_blocks,
+                                                              progress);
             release_ar_after_phase();
         }
         const int64_t hidden_frame_width =
@@ -255,14 +258,15 @@ struct MiniMaxMusic3PipelineRuntime::Impl {
         if (generated_frames <= 0) {
             throw std::runtime_error("MiniMax Music 3 AR produced no frames");
         }
-        return denoise_and_vocode(frame_hiddens, generated_frames, request, rng_offset_blocks);
+        return denoise_and_vocode(frame_hiddens, generated_frames, request, rng_offset_blocks, progress);
     }
 
     runtime::AudioBuffer denoise_and_vocode(
         const std::vector<float> & frame_hiddens,
         int64_t generated_frames,
         const MiniMaxMusic3Request & caller_request,
-        uint64_t rng_offset_blocks) {
+        uint64_t rng_offset_blocks,
+        ProgressSink progress = {}) {
         const int64_t hidden_frame_width =
             assets->config.condition.condition_layers * assets->config.qwen.hidden_size;
         // Chunk geometry from the effective hop: kept = latents(hop),
@@ -322,6 +326,11 @@ struct MiniMaxMusic3PipelineRuntime::Impl {
                 previous_latent = std::move(carry_latent);
                 previous_condition = std::move(carry_condition);
                 denoised.push_back({std::move(latents), condition_frames});
+                if (progress) {
+                    progress("flow",
+                             static_cast<int>(chunk_index + 1),
+                             static_cast<int>(starts.size()));
+                }
             }
             release_flow_after_phase();
         }
@@ -357,6 +366,11 @@ struct MiniMaxMusic3PipelineRuntime::Impl {
                 const int64_t right =
                     chunk_index + 1 == denoised.size() ? 0 : crop_right * assets->config.vocoder.hop_length;
                 detail::append_cropped_interleaved_audio(out, audio, left, right);
+                if (progress) {
+                    progress("vocoder",
+                             static_cast<int>(chunk_index + 1),
+                             static_cast<int>(denoised.size()));
+                }
             }
             release_vocoder_after_phase();
         }
@@ -377,7 +391,8 @@ struct MiniMaxMusic3PipelineRuntime::Impl {
     // RNG consumption; if the AR stage ends early (EOS) or consumption differs
     // from the plan, the worker result is discarded and the exact sequential
     // stage runs instead, so output bytes never depend on the overlap.
-    runtime::AudioBuffer generate_overlapped(const MiniMaxMusic3Request & request, int64_t target_frames) {
+    runtime::AudioBuffer generate_overlapped(const MiniMaxMusic3Request & request, int64_t target_frames,
+                                             ProgressSink progress) {
         const auto & config = assets->config;
         const int64_t hidden_frame_width = config.condition.condition_layers * config.qwen.hidden_size;
 
@@ -540,7 +555,7 @@ struct MiniMaxMusic3PipelineRuntime::Impl {
                 std::rethrow_exception(worker_error);
             }
             engine::debug::timing_log_scalar("minimax_music3.pipeline.overlap_fallback", 1.0);
-            return denoise_and_vocode(frame_hiddens, generated_frames, request, rng_offset_blocks);
+            return denoise_and_vocode(frame_hiddens, generated_frames, request, rng_offset_blocks, progress);
         }
 
         release_flow_after_phase();
@@ -707,8 +722,9 @@ MiniMaxMusic3PipelineRuntime::MiniMaxMusic3PipelineRuntime(
 
 MiniMaxMusic3PipelineRuntime::~MiniMaxMusic3PipelineRuntime() = default;
 
-runtime::AudioBuffer MiniMaxMusic3PipelineRuntime::generate(const MiniMaxMusic3Request & request) {
-    return impl_->generate(request);
+runtime::AudioBuffer MiniMaxMusic3PipelineRuntime::generate(const MiniMaxMusic3Request & request,
+                                                             ProgressSink progress) {
+    return impl_->generate(request, std::move(progress));
 }
 
 std::vector<runtime::AudioBuffer> MiniMaxMusic3PipelineRuntime::generate_ensemble(

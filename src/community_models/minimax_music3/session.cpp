@@ -314,7 +314,7 @@ runtime::TaskResult MiniMaxMusic3Session::run(const runtime::TaskRequest & reque
             result.named_audio_outputs.push_back(std::move(named));
         }
     } else {
-        result.audio_output = pipeline_->generate(parsed);
+        result.audio_output = pipeline_->generate(parsed, progress_sink_);
     }
     engine::debug::timing_log_scalar(
         "session.wall_ms",
