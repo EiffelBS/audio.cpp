@@ -211,6 +211,7 @@ add_library(ggml-base
 set_target_properties(ggml-base PROPERTIES
     VERSION ${GGML_VERSION}
     SOVERSION ${GGML_VERSION_MAJOR}
+    OUTPUT_NAME "ggml-base-native"
 )
 
 target_include_directories(ggml-base PRIVATE .)
@@ -230,6 +231,7 @@ add_library(ggml::ggml ALIAS ggml)
 set_target_properties(ggml PROPERTIES
     VERSION ${GGML_VERSION}
     SOVERSION ${GGML_VERSION_MAJOR}
+    OUTPUT_NAME "ggml-native"
 )
 
 if (GGML_BACKEND_DIR)
@@ -250,6 +252,7 @@ function(ggml_add_backend_library backend)
         add_library(${backend} MODULE ${ARGN})
         # write the shared library to the output directory
         set_target_properties(${backend} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+        set_target_properties(${backend} PROPERTIES OUTPUT_NAME "${backend}-native")
         target_compile_definitions(${backend} PRIVATE GGML_BACKEND_DL)
         add_dependencies(ggml ${backend})
         if (GGML_BACKEND_DIR)
