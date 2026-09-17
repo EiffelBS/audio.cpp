@@ -535,14 +535,20 @@ static ggml_backend_reg_t ggml_backend_load_best(const char * name, bool silent,
 
     if (best_score == 0) {
         // try to load the base backend
+        // EiffelBS fork: backend DLLs carry a "-native" suffix (ggml-<name>-native.[dll|so])
+        // so the whole ggml family can coexist with other ggml builds in one process.
+        // Try the suffixed name first, then fall back to the upstream bare name.
         for (const auto & search_path : search_paths) {
-            fs::path filename = backend_filename_prefix().native() + name_path.native() + backend_filename_extension().native();
-            fs::path path = search_path / filename;
-            if (std::error_code ec; fs::exists(path, ec)) {
-                return get_reg().load_backend(path, silent);
-            } else {
-                if (ec) {
-                    GGML_LOG_DEBUG("%s: posix_stat(%s) failure, error-message: %s\n", __func__, path_str(path).c_str(), ec.message().c_str());
+            for (const auto & candidate : { name_path.native() + fs::u8path("-native").native(),
+                                            name_path.native() }) {
+                fs::path filename = backend_filename_prefix().native() + candidate + backend_filename_extension().native();
+                fs::path path = search_path / filename;
+                if (std::error_code ec; fs::exists(path, ec)) {
+                    return get_reg().load_backend(path, silent);
+                } else {
+                    if (ec) {
+                        GGML_LOG_DEBUG("%s: posix_stat(%s) failure, error-message: %s\n", __func__, path_str(path).c_str(), ec.message().c_str());
+                    }
                 }
             }
         }

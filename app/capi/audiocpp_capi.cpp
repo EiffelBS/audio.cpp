@@ -342,14 +342,24 @@ int acpp_run_json_progress (acpp_model * model, const char * request_json,
 {
     if (model == nullptr || request_json == nullptr || cb == nullptr)
         return -1;
-    // Progress is a MiniMax Music 3 capability on the mainline fork. The
-    // dev-branch runtime exposes no session progress sink yet, so this
-    // function degrades to the plain path (no progress events) rather
-    // than failing the render - OpenTimbre falls back to indeterminate
-    // progress. Same return contract either way.
-    (void) pcb;
-    (void) progress_userdata;
-    return acpp_run_json (model, request_json, cb, userdata);
+    // Progress is a MiniMax Music 3 capability: other families run the
+    // plain path (no progress) rather than failing the render.
+    auto * music =
+        dynamic_cast<engine::models::minimax_music3::MiniMaxMusic3Session *>(
+            model->session.get());
+    if (music != nullptr && pcb != nullptr)
+    {
+        music->set_progress_sink (
+            [pcb, progress_userdata] (const std::string & phase,
+                                      int done, int total)
+            {
+                pcb (phase.c_str(), done, total, progress_userdata);
+            });
+    }
+    const int rc = acpp_run_json (model, request_json, cb, userdata);
+    if (music != nullptr)
+        music->set_progress_sink (nullptr);
+    return rc;
 }
 
 } // extern "C"

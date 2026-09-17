@@ -116,6 +116,16 @@ int main (int argc, char ** argv)
     }
     sink.file.close();
 
+    // Surface the model's text_output (YuE2 planned ABC score recovery):
+    // a gen run with cot != off must expose the planned score here.
+    const char * textLang = nullptr;
+    if (const char * text = acpp_last_text (model, &textLang))
+    {
+        std::printf ("text_output: lang=%s bytes=%zu head=%.80s\n",
+                     textLang != nullptr ? textLang : "(null)",
+                     std::string (text).size(), text);
+    }
+
     std::printf ("PASS: %lld wav bytes, %d Hz, %d ch -> %s\n",
                  sink.bytes, sink.sampleRate, sink.channels, outPath);
     acpp_model_unload (model);

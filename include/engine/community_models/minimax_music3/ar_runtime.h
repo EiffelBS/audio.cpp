@@ -10,9 +10,17 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace engine::models::minimax_music3 {
+
+// Per-phase progress sink for long offline runs: phase is "ar", "flow"
+// or "vocoder"; done/total count real completed units (frames/chunks).
+// May be invoked from the run worker thread; keep it cheap and
+// thread-safe. Null = no reporting.
+using ProgressSink = std::function<void (const std::string & phase,
+                                         int done, int total)>;
 
 class MiniMaxMusic3ArRuntime {
 public:
@@ -28,7 +36,8 @@ public:
     std::vector<float> generate_frame_hiddens(
         const MiniMaxMusic3Request & request,
         int64_t target_frames,
-        uint64_t & rng_offset_blocks);
+        uint64_t & rng_offset_blocks,
+        ProgressSink progress = {});
 
     // Identical generation, but appends into a caller-owned buffer (which must
     // survive without reallocation: callers reserve target capacity up front)

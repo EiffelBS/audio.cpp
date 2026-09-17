@@ -4,15 +4,75 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <ostream>
+#include <vector>
+
+#if defined(_WIN32)
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#else
+    #include <dlfcn.h>
+#endif
 #include <stdexcept>
 #include <string>
 
 namespace engine::core {
 
+namespace {
+
+// Directory holding the binary (EXE or engine DLL) that this translation
+// unit was compiled into. The ggml backend loader only ever searches the
+// host process executable directory and the current working directory, so
+// without this the ggml backends would not be found when the engine DLL
+// (audiocpp_engine.dll) lives in a different folder than the host app
+// (e.g. OpenTimbre loads the engine from the shared EiffelBS runtime).
+// Resolving against OUR OWN module keeps "backends next to the engine"
+// working regardless of where the host lives.
+std::filesystem::path module_directory() {
+#if defined(_WIN32)
+    HMODULE mod = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(&ensure_backends_loaded),
+                            &mod) || mod == nullptr) {
+        return {};
+    }
+    DWORD size = MAX_PATH;
+    std::vector<wchar_t> buf(size);
+    DWORD n = 0;
+    for (;;) {
+        n = GetModuleFileNameW(mod, buf.data(), size);
+        if (n == 0) {
+            return {};
+        }
+        if (n < size) {
+            break;
+        }
+        size *= 2;
+        buf.resize(size);
+    }
+    return std::filesystem::path(std::wstring(buf.data(), n)).parent_path();
+#else
+    Dl_info info;
+    if (dladdr(reinterpret_cast<const void*>(&ensure_backends_loaded), &info) == 0 ||
+        info.dli_fname == nullptr) {
+        return {};
+    }
+    return std::filesystem::path(info.dli_fname).parent_path();
+#endif
+}
+
+} // namespace
+
 void ensure_backends_loaded() {
     if (ggml_backend_reg_count() == 0) {
-        ggml_backend_load_all();
+        const auto dir = module_directory();
+        if (dir.empty()) {
+            ggml_backend_load_all();
+        } else {
+            ggml_backend_load_all_from_path(dir.string().c_str());
+        }
     }
 }
 

@@ -758,9 +758,15 @@ struct MiniMaxMusic3ArRuntime::Impl {
     std::vector<float> generate_frame_hiddens(
         const MiniMaxMusic3Request & request,
         int64_t target_frames,
-        uint64_t & rng_offset_blocks) {
+        uint64_t & rng_offset_blocks,
+        ProgressSink progress) {
         std::vector<float> frame_hiddens;
         generate_frame_hiddens_into(request, target_frames, rng_offset_blocks, frame_hiddens, nullptr);
+        // The loop can break early (end token): always close the phase so
+        // the host never stalls below 100% of "ar".
+        if (progress) {
+            progress("ar", 1, 1);
+        }
         return frame_hiddens;
     }
 
@@ -809,8 +815,9 @@ MiniMaxMusic3ArRuntime::~MiniMaxMusic3ArRuntime() = default;
 std::vector<float> MiniMaxMusic3ArRuntime::generate_frame_hiddens(
     const MiniMaxMusic3Request & request,
     int64_t target_frames,
-    uint64_t & rng_offset_blocks) {
-    return impl_->generate_frame_hiddens(request, target_frames, rng_offset_blocks);
+    uint64_t & rng_offset_blocks,
+    ProgressSink progress) {
+    return impl_->generate_frame_hiddens(request, target_frames, rng_offset_blocks, std::move(progress));
 }
 
 void MiniMaxMusic3ArRuntime::generate_frame_hiddens_into(
