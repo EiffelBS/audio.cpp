@@ -21,6 +21,9 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#include <excpt.h>   // EXCEPTION_EXECUTE_HANDLER for the SEH trap
+#endif
 
 // Completes the opaque typedefs from audiocpp_capi.h.
 struct acpp_ctx
@@ -69,6 +72,14 @@ std::string currentExceptionMessage ()
     {
         return "unknown error";
     }
+}
+
+/** const char* overload: keeps std::string temporaries OUT of the
+    __try/__except function below (C2712 forbids object unwinding
+    there) - the temporary lives in this plain function instead. */
+void setLastErrorStr (acpp_ctx * ctx, const char * message)
+{
+    setLastError (ctx, message == nullptr ? "" : message);
 }
 
 /** Minimal PCM16 WAV encoder (mono/stereo interleaved, 44-byte header). */
@@ -199,11 +210,11 @@ void acpp_model_unload (acpp_model * model)
     delete model;   // session + loaded model destruction releases VRAM
 }
 
-int acpp_run_json (acpp_model * model, const char * request_json,
-                   acpp_audio_cb cb, void * userdata)
+/** Former acpp_run_json body, extracted so the exported function can
+    wrap it in an SEH trap (__try cannot share a function with try). */
+int runJsonInner (acpp_model * model, const char * request_json,
+                  acpp_audio_cb cb, void * userdata)
 {
-    if (model == nullptr || request_json == nullptr || cb == nullptr)
-        return -1;
     try
     {
         const auto value = engine::io::json::parse (request_json);
@@ -228,6 +239,33 @@ int acpp_run_json (acpp_model * model, const char * request_json,
         setLastError (model->ctx, currentExceptionMessage());
         return -1;
     }
+}
+
+int acpp_run_json (acpp_model * model, const char * request_json,
+                   acpp_audio_cb cb, void * userdata)
+{
+    if (model == nullptr || request_json == nullptr || cb == nullptr)
+        return -1;
+    // A hard crash inside a model session (access violation, abort) is
+    // NOT a C++ exception: try/catch cannot see it, and without this
+    // trap it kills the host process. The session/CUDA state may be
+    // tainted after a trapped crash - the host is told to reload the
+    // model (fresh session).
+#ifdef _WIN32
+    __try
+    {
+        return runJsonInner (model, request_json, cb, userdata);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        setLastErrorStr (model->ctx, "native engine hard crash trapped -"
+            " re-select the Native backend to reload the model, then"
+            " retry (no audio was produced)");
+        return -2;
+    }
+#else
+    return runJsonInner (model, request_json, cb, userdata);
+#endif
 }
 
 namespace
@@ -294,11 +332,11 @@ int acpp_last_artifact (acpp_model * model, const void ** bytes_out,
     return (int) artifact->payload.size();
 }
 
-int acpp_run_json_stems (acpp_model * model, const char * request_json,
-                         acpp_stem_cb cb, void * userdata)
+/** Former acpp_run_json_stems body, extracted so the exported function
+    can wrap it in an SEH trap (__try cannot share a function with try). */
+int runJsonStemsInner (acpp_model * model, const char * request_json,
+                       acpp_stem_cb cb, void * userdata)
 {
-    if (model == nullptr || request_json == nullptr || cb == nullptr)
-        return -1;
     try
     {
         const auto value = engine::io::json::parse (request_json);
@@ -326,6 +364,30 @@ int acpp_run_json_stems (acpp_model * model, const char * request_json,
         setLastError (model->ctx, currentExceptionMessage());
         return -1;
     }
+}
+
+int acpp_run_json_stems (acpp_model * model, const char * request_json,
+                         acpp_stem_cb cb, void * userdata)
+{
+    if (model == nullptr || request_json == nullptr || cb == nullptr)
+        return -1;
+    // Same SEH trap contract as acpp_run_json: a hard crash inside the
+    // stem run must not kill the in-process host.
+#ifdef _WIN32
+    __try
+    {
+        return runJsonStemsInner (model, request_json, cb, userdata);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        setLastErrorStr (model->ctx, "native engine hard crash trapped -"
+            " re-select the Native backend to reload the model, then"
+            " retry (no audio was produced)");
+        return -2;
+    }
+#else
+    return runJsonStemsInner (model, request_json, cb, userdata);
+#endif
 }
 
 const char * acpp_last_error (acpp_ctx * ctx)
