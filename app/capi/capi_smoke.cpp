@@ -106,6 +106,31 @@ int main (int argc, char ** argv)
     const int rc = acpp_run_json (model, requestJson.c_str(), writeWav, &sink);
     std::fprintf (stderr, "smoke: run done rc=%d\n", rc);
     std::fflush (stderr);
+    // Text/artifact outputs accompany rc=0 (audio + text) and rc=1 (text or
+    // artifact only, e.g. midi tasks deliver no wav). Print both on any
+    // non-error return so the smoke can gate artifact-producing tasks.
+    if (rc >= 0)
+    {
+        const char * textLang = nullptr;
+        if (const char * text = acpp_last_text (model, &textLang))
+            std::printf ("text_output: lang=%s bytes=%zu head=%.80s\n",
+                         textLang != nullptr ? textLang : "(null)",
+                         std::string (text).size(), text);
+        const void * bytes = nullptr;
+        const char * kind = nullptr;
+        const char * id = nullptr;
+        const int n = acpp_last_artifact (model, &bytes, &kind, &id);
+        if (n > 0 && bytes != nullptr)
+        {
+            std::printf ("artifact: kind=%s id=%s bytes=%d head=%.4s\n",
+                         kind != nullptr ? kind : "(null)",
+                         id != nullptr ? id : "(null)",
+                         n, (const char *) bytes);
+            std::ofstream art (std::string (outPath) + ".artifact.bin",
+                               std::ios::binary);
+            art.write ((const char *) bytes, n);
+        }
+    }
     if (rc != 0)
     {
         std::printf ("FAIL: acpp_run_json rc=%d: %s\n", rc,
