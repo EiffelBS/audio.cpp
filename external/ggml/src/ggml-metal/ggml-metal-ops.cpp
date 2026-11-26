@@ -2514,6 +2514,11 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
     } else {
         auto pipeline = ggml_metal_library_get_pipeline_mul_mv(lib, op);
 
+        if (pipeline.pipeline == nullptr) {
+            GGML_ABORT("ggml_metal_op_mul_mat: no pipeline for src0=%s src1=%s",
+                       ggml_type_name(op->src[0]->type), ggml_type_name(op->src[1]->type));
+        }
+
         const int nr0 = pipeline.nr0;
         const int nr1 = pipeline.nr1;
         const int nsg = pipeline.nsg;
